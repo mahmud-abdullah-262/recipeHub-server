@@ -24,12 +24,14 @@ app.use(express.json())
 
 async function run() {
   try {
-    await client.connect();
-    await client.db("admin").command({ ping: 1 });
+    // await client.connect();
+    // await client.db("admin").command({ ping: 1 });
     console.log("Successfully connected to MongoDB!");
 
     const db = client.db('recipe-hub-server')
     const recipeCollection = db.collection('recipe-collection')
+    const sessionCollection = db.collection('session')
+     const userCollection = db.collection('user')
   
 
 
@@ -57,6 +59,16 @@ async function run() {
 next()
 }
 
+// user verification 
+const verifyUser = async(req, res, next) => {
+  const user = await req.user
+  if(user.role !== 'user'){
+    return res.status(403).send({message: 'forbidden'})
+  }
+
+  next()
+}
+
 
 
     app.get('/', (req, res) => {
@@ -81,8 +93,9 @@ next()
 )
 
 // recipe by id fetching
- app.get('/api/recipes/:id', verifyToken, async (req, res) => {
+ app.get('/api/recipes/:id', verifyToken, verifyUser, async (req, res) => {
       const id = req.params.id;
+      console.log(id, 'id')
       
       const query = {_id: new ObjectId(id)} // ডাটায় যদি ম্যানুয়াল আইডি সেট করা থাকে তাহলে এভাবে। আর যদি ম্যানুয়ালি আইডি না থাকে তাহলে এভাবে - new ObjectId(id)
 
@@ -91,17 +104,17 @@ next()
       res.json(result)
     })
 
-// // job posting 
-//     app.post('/api/jobs', verifyToken, verifyRecruiter, async (req, res) => {
-//       const job = req.body;
-//       const newJob = {
-//         ...job,
-//         createdAt: new Date()
-//       }
-//       console.log("Received:", newJob);
-//       const result = await jobCollection.insertOne(newJob);
-//       res.json({ insertedId: result.insertedId.toString() })
-//     })
+// recipe posting 
+    app.post('/api/recipes', verifyToken, verifyUser, async (req, res) => {
+      const recipe = req.body;
+      const newRecipe = {
+        ...recipe,
+        createdAt: new Date()
+      }
+      console.log("Received:", recipe);
+      const result = await recipeCollection.insertOne(newRecipe);
+      res.json({ insertedId: result.insertedId.toString() })
+    })
 
 
 
