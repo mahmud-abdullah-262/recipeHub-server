@@ -77,6 +77,7 @@ const verifyUser = async(req, res, next) => {
  
 
 
+// ================== get functions ======================
 
     // all recipe fetching
     app.get('/api/recipes', async (req, res) => {
@@ -104,6 +105,28 @@ const verifyUser = async(req, res, next) => {
       res.json(result)
     })
 
+    // recipe by user id
+
+   app.get('/api/recipe/authorId', verifyToken, async (req, res) => { 
+  try {
+   
+    const authorId = req.query.authorId; 
+    const query = {};
+
+    if (authorId) {
+      query.authorId = authorId;
+    }
+
+    const cursor = recipeCollection.find(query);
+    const result = await cursor.toArray();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+    // =============== post functions ============================
 // recipe posting 
     app.post('/api/recipes', verifyToken, verifyUser, async (req, res) => {
       const recipe = req.body;
@@ -115,6 +138,88 @@ const verifyUser = async(req, res, next) => {
       const result = await recipeCollection.insertOne(newRecipe);
       res.json({ insertedId: result.insertedId.toString() })
     })
+
+
+
+    // ================ patch functions ============================
+    // recipe update with id
+    
+    app.patch('/api/recipes', verifyToken, verifyUser, async (req, res) => {
+      try{
+         const id = req.body.id
+      
+      if (!id) {
+            return res.status(400).json({ success: false, message: "ID not found" });
+        }
+
+        const updatedData = req.body
+        if(!updatedData) {
+           return res.status(400).json({ success: false, message: "Data not found" });
+        }
+        const query = {_id: new ObjectId(id)}
+    // একটি খালি আপডেট অবজেক্ট তৈরি করা
+        const updateFields = {};
+
+        //  updatedData-এর প্রতিটি ফিল্ড চেক করে শুধু ভ্যালিড ফিল্ডগুলো নেওয়া
+        for (const key in updatedData) {
+            // আমরা id ফিল্ডটি আপডেট করতে চাই না, এবং খালি স্ট্রিং ("") বাদ দিতে চাই
+            if (key !== 'id' && updatedData[key] !== "") {
+                updateFields[key] = updatedData[key];
+            }
+        }
+
+        // যদি এমন হয় যে ইউজার শুধু খালি ফিল্ডই পাঠিয়েছে 
+        if (Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ success: false, message: "No valid fields to update" });
+        }
+
+        // ৩. মঙ্গোডিবিতে আপডেট করা
+        const result = await recipeCollection.updateOne(query, { $set: updateFields });
+
+        if (result.modifiedCount === 0) {
+            return res.status(200).json({ success: true, message: "No changes made to the recipe" });
+        }
+
+        return res.status(200).json({ success: true, message: "Recipe updated successfully" });
+
+    }
+     catch (error){
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+     }
+
+
+
+
+    })
+
+
+
+ // =============== delete functions =====================
+app.delete('/api/recipes', verifyToken, verifyUser, async (req, res) => {
+  try {
+    const id = req.query.id; // ১. আগে আইডি রিসিভ করুন
+    console.log(id, 'deleted recipe id'); // ২. তারপর লগ করুন
+
+    // আইডি না থাকলে সার্ভার ক্র্যাশ করতে না দিয়ে আগেই রিটার্ন করুন
+    if (!id || id === 'undefined') {
+      return res.status(400).json({ success: false, message: "Valid ID is required" });
+    }
+
+    const query = { _id: new ObjectId(id) };
+    const result = await recipeCollection.deleteOne(query);
+    
+    // সবসময় রেসপন্স হিসেবে json পাঠানো ভালো প্র্যাকটিস
+    return res.json(result); 
+
+  } catch (error) {
+    console.error("Express Delete Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
+
 
 
 
