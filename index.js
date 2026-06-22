@@ -32,6 +32,7 @@ async function run() {
     const recipeCollection = db.collection('recipe-collection')
     const sessionCollection = db.collection('session')
      const userCollection = db.collection('user')
+     const myFavoritesCollections = db.collection('favorites')
   
 
 
@@ -125,6 +126,19 @@ const verifyUser = async(req, res, next) => {
   }
 });
 
+// favorite recipe 
+app.get('/app/myFavorites', verifyToken, verifyUser, async (req, res) => {
+  const userId = req.query.userId;
+  const query ={}
+  if(req.query.userId) {
+     query.userId = req.query.userId
+  }
+ 
+  const cursor = myFavoritesCollections.find(query)
+  const result = await cursor.toArray()
+  res.json(result)
+} )
+
 
     // =============== post functions ============================
 // recipe posting 
@@ -137,6 +151,17 @@ const verifyUser = async(req, res, next) => {
       console.log("Received:", recipe);
       const result = await recipeCollection.insertOne(newRecipe);
       res.json({ insertedId: result.insertedId.toString() })
+    })
+
+    app.post('/app/myFavorites', verifyToken, verifyUser, async (req, res) => {
+      const data = req.body;
+      console.log(data, 'data from server')
+      const favorite = {
+        ...data,
+        createdAt: new Date()
+      }
+      const result = myFavoritesCollections.insertOne(favorite)
+      res.json()
     })
 
 
