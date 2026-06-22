@@ -33,6 +33,7 @@ async function run() {
     const sessionCollection = db.collection('session')
      const userCollection = db.collection('user')
      const myFavoritesCollections = db.collection('favorites')
+     const planCollection = db.collection('plans')
   
 
 
@@ -139,6 +140,26 @@ app.get('/app/myFavorites', verifyToken, verifyUser, async (req, res) => {
   res.json(result)
 } )
 
+// plans
+app.get('/api/plans', async (req, res) => {
+  try {
+    const query = {};
+    if (req.query.planId) {
+      query.planId = req.query.planId;
+    }
+
+    // find() ব্যবহার করে তোলপাড়া করে খোঁজা এবং array-তে নেওয়া
+    const result = await planCollection.find(query).toArray();
+    
+    // যদি আপনি একটি মাত্র অবজেক্ট চান (অ্যারে না চান) এবং ডাটা পাওয়া যায়:
+    // res.json(result[0] || null); 
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
     // =============== post functions ============================
 // recipe posting 
@@ -153,16 +174,48 @@ app.get('/app/myFavorites', verifyToken, verifyUser, async (req, res) => {
       res.json({ insertedId: result.insertedId.toString() })
     })
 
+    // favorite recipe posting
     app.post('/app/myFavorites', verifyToken, verifyUser, async (req, res) => {
-      const data = req.body;
-      console.log(data, 'data from server')
-      const favorite = {
-        ...data,
-        createdAt: new Date()
-      }
-      const result = myFavoritesCollections.insertOne(favorite)
-      res.json()
-    })
+  try {
+    const data = req.body;
+    const { _id, ...recipeData } = data; // আগের নিয়মে অরিজিনাল _id আলাদা করে নিলাম
+
+    const recipeId = _id;
+    const userId = recipeData.userId; // আপনার রিকোয়েস্টে যেভাবে userId পাঠাচ্ছেন (অথবা req.user.id থেকেও নিতে পারেন)
+
+    // ১. চেক করুন এই ইউজার একই রেসিপি আগে ফেভারিট করেছে কি না
+    const query = { userId: userId, recipeId: recipeId };
+    const alreadyFavorited = await myFavoritesCollections.findOne(query);
+
+    if (alreadyFavorited) {
+      // যদি আগে থেকেই ডাটা থাকে, তবে এখানেই রেসপন্স পাঠিয়ে ফাংশন থামিয়ে দিন
+      return res.status(400).json({ 
+        success: false, 
+        message: "You have already added this recipe to your favorites!" 
+      });
+    }
+
+    // ২. যদি আগে ফেভারিট না করা থাকে, তবেই নতুন ডাটা তৈরি করুন
+    const favorite = {
+      ...recipeData,
+      recipeId: recipeId,
+      createdAt: new Date()
+    };
+
+    // ৩. ডেটাবেজে ইনসার্ট করুন
+    const result = await myFavoritesCollections.insertOne(favorite);
+    
+    res.status(201).json({ 
+      success: true, 
+      message: "Added to favorites successfully", 
+      data: result 
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 
 
