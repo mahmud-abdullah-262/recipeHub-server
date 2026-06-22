@@ -193,6 +193,55 @@ const verifyUser = async(req, res, next) => {
 
     })
 
+    // user profile update
+     app.patch('/api/user', verifyToken, verifyUser, async (req, res) => {
+      try{
+         const id = req.body.id
+      
+      if (!id) {
+            return res.status(400).json({ success: false, message: "ID not found" });
+        }
+
+        const updatedData = req.body
+        if(!updatedData) {
+           return res.status(400).json({ success: false, message: "Data not found" });
+        }
+        const query = {_id: new ObjectId(id)}
+    // একটি খালি আপডেট অবজেক্ট তৈরি করা
+        const updateFields = {};
+
+        //  updatedData-এর প্রতিটি ফিল্ড চেক করে শুধু ভ্যালিড ফিল্ডগুলো নেওয়া
+        for (const key in updatedData) {
+            // আমরা id ফিল্ডটি আপডেট করতে চাই না, এবং খালি স্ট্রিং ("") বাদ দিতে চাই
+            if (key !== 'id' && updatedData[key] !== "") {
+                updateFields[key] = updatedData[key];
+            }
+        }
+
+        // যদি এমন হয় যে ইউজার শুধু খালি ফিল্ডই পাঠিয়েছে 
+        if (Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ success: false, message: "No valid fields to update" });
+        }
+
+        // ৩. মঙ্গোডিবিতে আপডেট করা
+        const result = await userCollection.updateOne(query, { $set: updateFields });
+
+        if (result.modifiedCount === 0) {
+            return res.status(200).json({ success: true, message: "No changes made to the recipe" });
+        }
+
+        return res.status(200).json({ success: true, message: "Recipe updated successfully" });
+
+    }
+     catch (error){
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+     }
+
+
+
+
+    })
 
 
  // =============== delete functions =====================
