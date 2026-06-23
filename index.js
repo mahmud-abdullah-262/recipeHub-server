@@ -36,6 +36,7 @@ async function run() {
      const planCollection = db.collection('plans')
      const subsCollection = db.collection('subscriptions')
      const purchasedRecipes = db.collection('purchasedRecipes')
+     const featuredCollection = db.collection('featured')
   
 
 
@@ -73,6 +74,15 @@ const verifyUser = async(req, res, next) => {
   next()
 }
 
+// user verification 
+const verifyAdmin = async(req, res, next) => {
+  const user = await req.user
+  if(user.role !== 'admin'){
+    return res.status(403).send({message: 'forbidden'})
+  }
+
+  next()
+}
 
 
     app.get('/', (req, res) => {
@@ -256,6 +266,73 @@ app.get('/api/check-purchase', verifyToken, async (req, res) => {
   }
 });
 
+// admin recipe featuring toggle (Add / Remove)
+app.post('/api/featuring', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const data = req.body;
+    const recipeId = data._id; // রেসিপির মূল আইডি
+
+    if (!recipeId) {
+      return res.status(400).json({ success: false, message: "Recipe ID is required" });
+    }
+
+    // ১. চেক করুন এই রেসিপি আগে থেকেই ফিচারড করা হয়েছে কি না
+    const query = { recipeId: recipeId };
+    const alreadyFeatured = await featuredCollection.findOne(query);
+
+    // ২. রেসিপি কালেকশন আপডেট করার ফিল্টার (ObjectId নিশ্চিত করার জন্য)
+    const recipeFilter = { _id: new ObjectId(recipeId) };
+
+    if (alreadyFeatured) {
+      // ---- কন্ডিশন A: যদি আগে থেকেই ফিচারড থাকে, তবে রিমুভ করতে হবে ----
+      
+      // ১. ফিচারড কালেকশন থেকে ডিলিট করুন
+      await featuredCollection.deleteOne(query);
+
+      // ২. রেসিপি কালেকশনে isFeatured ফিল্ড false করে দিন
+      await recipeCollection.updateOne(recipeFilter, {
+        $set: { isFeatured: false }
+      });
+
+      return res.status(200).json({ 
+        success: true, 
+        message: "Removed from featured successfully",
+        isFeatured: false
+      });
+
+    } else {
+      // ---- কন্ডিশন B: যদি ফিচারড না করা থাকে, তবে নতুন করে যুক্ত করতে হবে ----
+      
+      // আইডি কনф্লিক্ট এড়াতে ডাটার মূল _id বাদ দিয়ে নতুন অবজেক্ট তৈরি
+      const { _id, ...restOfData } = data; 
+      const featured = {
+        ...restOfData,
+        recipeId: recipeId,
+        createdAt: new Date()
+      };
+
+      // ১. ডেটাবেজে ইনসার্ট করুন
+      const result = await featuredCollection.insertOne(featured);
+      
+      // ২. রেসিপি কালেকশনে isFeatured ফিল্ড true করে দিন
+      await recipeCollection.updateOne(recipeFilter, {
+        $set: { isFeatured: true }
+      });
+
+      return res.status(201).json({ 
+        success: true, 
+        message: "Added to featured successfully", 
+        isFeatured: true,
+        data: result 
+      });
+    }
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // subs post api
 app.post('/api/subs', verifyToken, async (req, res) => {
   try {
@@ -327,7 +404,7 @@ app.post('/api/subs', verifyToken, async (req, res) => {
     // ================ patch functions ============================
     // recipe update with id
     
-    app.patch('/api/recipes', verifyToken, verifyUser, async (req, res) => {
+    app.patch('/api/recipes', verifyToken, async (req, res) => {
       try{
          const id = req.body.id
       
@@ -426,9 +503,48 @@ app.post('/api/subs', verifyToken, async (req, res) => {
 
     })
 
+// Admin user block
+app.patch('/api/admin/user-status', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.body.id;
+        const blockedInput = req.body.blocked;
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: "User ID is required" });
+        }
+        
+        if (blockedInput === undefined || blockedInput === null || blockedInput === "") {
+            return res.status(400).json({ success: false, message: "Blocked value is required" });
+        }
+
+  // স্ট্রিং-কে বুলিয়ানে কনভার্ট করা
+        const isBlocked = blockedInput === "true" || blockedInput === true;
+
+        const query = { _id: new ObjectId(id) };
+        
+        // ২ নম্বর সমস্যার সমাধান: মঙ্গোডিবির $set আগে থেকে ফিল্ড না থাকলেও নতুন করে তৈরি করে দেবে
+        const result = await userCollection.updateOne(query, { $set: { blocked: isBlocked } });
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (result.modifiedCount === 0) {
+            return res.status(200).json({ success: true, message: "No changes made to user status" });
+        }
+
+        const statusMessage = isBlocked ? "User blocked successfully" : "User unblocked successfully";
+        return res.status(200).json({ success: true, message: statusMessage });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+});
+
 
  // =============== delete functions =====================
-app.delete('/api/recipes', verifyToken, verifyUser, async (req, res) => {
+app.delete('/api/recipes', verifyToken, async (req, res) => {
   try {
     const id = req.query.id; // ১. আগে আইডি রিসিভ করুন
     console.log(id, 'deleted recipe id'); // ২. তারপর লগ করুন
