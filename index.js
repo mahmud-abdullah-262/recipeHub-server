@@ -35,6 +35,7 @@ async function run() {
      const myFavoritesCollections = db.collection('favorites')
      const planCollection = db.collection('plans')
      const subsCollection = db.collection('subscriptions')
+     const purchasedRecipes = db.collection('purchasedRecipes')
   
 
 
@@ -152,12 +153,49 @@ app.get('/api/plans', async (req, res) => {
     // find() ব্যবহার করে তোলপাড়া করে খোঁজা এবং array-তে নেওয়া
     const result = await planCollection.find(query).toArray();
     
-    // যদি আপনি একটি মাত্র অবজেক্ট চান (অ্যারে না চান) এবং ডাটা পাওয়া যায়:
-    // res.json(result[0] || null); 
     
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+
+// geting purchased recipe 
+app.get('/api/purchased', verifyToken, verifyUser, async(req, res) => {
+  const userEmail = req.query.email;
+  const query = {}
+  if(req.query.email){
+    query.customerEmail = userEmail
+  }
+  const result = await purchasedRecipes.find(query).toArray()
+  res.json(result)
+  
+})
+
+
+// checking purchased recipe
+app.get('/api/check-purchase', verifyToken, async (req, res) => {
+  try {
+    const { customerEmail, recipeId } = req.query;
+
+    if (!recipeId) {
+      return res.json({ canPurchase: true }); // রেসিপি আইডি না থাকলে (যেমন সাধারণ সাবস্ক্রিপশন) কিনতে পারবে
+    }
+
+    const query = { customerEmail, recipeId };
+    const alreadyPurchased = await purchasedRecipes.findOne(query);
+
+    if (alreadyPurchased) {
+      return res.json({ 
+        canPurchase: false, 
+        message: "You have already purchased this recipe!" 
+      });
+    }
+
+    return res.json({ canPurchase: true });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -220,28 +258,69 @@ app.get('/api/plans', async (req, res) => {
 
 // subs post api
 app.post('/api/subs', verifyToken, async (req, res) => {
-  const data = req.body
-  const subsInfo = {
-    ...data, 
-    createdAt: new Date()
-  }
-  const result = await subsCollection.insertOne(subsInfo);
+  try {
+    const data = req.body;
+    const subsInfo = {
+      ...data,
+      createdAt: new Date()
+    };
 
-  // update user data
-    const filter = {email: data.customerEmail}
+    const userEmail = subsInfo.customerEmail;
+    const recipeId = subsInfo.recipeId;
 
-    const updateDocument = {
-      $set: {
-        plan: data.planId
+    // ১. যদি recipeId থাকে (নির্দিষ্ট কোনো রেসিপি কেনা হচ্ছে)
+    if (recipeId) {
+      const query = { customerEmail: userEmail, recipeId: recipeId };
+      const alreadyPurchased = await purchasedRecipes.findOne(query);
+
+      // আগে কেনা হয়ে থাকলে এখানেই রেসপন্স ফেরত পাঠিয়ে ফাংশন থামিয়ে দেবে
+      if (alreadyPurchased) {
+        return res.status(400).json({
+          success: false,
+          message: "You have already purchased this recipe!"
+        });
       }
+
+      // কেনা না হয়ে থাকলে purchasedRecipes-এ ইনসার্ট হবে
+      const result = await purchasedRecipes.insertOne(subsInfo);
+
+
+
+      return res.status(201).json({
+        success: true,
+        message: "Recipe purchased successfully",
+        data: result
+      });
     }
-    const updateResult = userCollection.updateOne(filter, updateDocument)
 
+    // ২. যদি recipeId না থাকে (সাধারণ কোনো সাবস্ক্রিপশন বা প্ল্যান কেনা হচ্ছে)
+    if (!recipeId) {
+      const result = await subsCollection.insertOne(subsInfo);
 
+      // ইউজার ডাটা আপডেট (প্ল্যান আপডেট)
+      const filter = { email: userEmail };
+      const updateDocument = {
+        $set: { plan: data.planId }
+      };
+      await userCollection.updateOne(filter, updateDocument);
 
-  res.json(updateResult)
+      return res.status(201).json({
+        success: true,
+        message: "Subscription added successfully",
+        data: result
+      });
+    }
 
-})
+  } catch (error) {
+    // যেকোনো এরর হলে ক্যাচ ব্লকে চলে আসবে এবং সার্ভার ক্র্যাশ করবে না
+    console.error("Error in /api/subs:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+});
 
 
 
