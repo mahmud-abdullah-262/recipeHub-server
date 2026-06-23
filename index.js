@@ -34,6 +34,7 @@ async function run() {
      const userCollection = db.collection('user')
      const myFavoritesCollections = db.collection('favorites')
      const planCollection = db.collection('plans')
+     const subsCollection = db.collection('subscriptions')
   
 
 
@@ -216,6 +217,31 @@ app.get('/api/plans', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// subs post api
+app.post('/api/subs', verifyToken, async (req, res) => {
+  const data = req.body
+  const subsInfo = {
+    ...data, 
+    createdAt: new Date()
+  }
+  const result = await subsCollection.insertOne(subsInfo);
+
+  // update user data
+    const filter = {email: data.customerEmail}
+
+    const updateDocument = {
+      $set: {
+        plan: data.planId
+      }
+    }
+    const updateResult = userCollection.updateOne(filter, updateDocument)
+
+
+
+  res.json(updateResult)
+
+})
 
 
 
