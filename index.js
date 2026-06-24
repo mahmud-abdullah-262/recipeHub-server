@@ -422,6 +422,18 @@ const report = req.body
           message: "Report Not Found"
         });
   }
+
+  const userId = req.body.userId
+  const recipeId = req.body.recipeId
+  const  query = {userId : userId, recipeId: recipeId}
+  const isReported = await reportCollection.findOne(query)
+  if(isReported){
+    return  res.status(400).json({
+          success: false,
+          message: "You already Reported"
+        });
+  }
+
   const result = reportCollection.insertOne(report)
   return  res.status(200).json({
           success: true,
@@ -586,7 +598,10 @@ app.patch('/api/admin/user-status', verifyToken, verifyAdmin, async (req, res) =
 
 
  // =============== delete functions =====================
-app.delete('/api/recipes', verifyToken, async (req, res) => {
+
+
+// delete recipe form user and admin
+ app.delete('/api/recipes', verifyToken, async (req, res) => {
   try {
     const id = req.query.id; // ১. আগে আইডি রিসিভ করুন
     console.log(id, 'deleted recipe id'); // ২. তারপর লগ করুন
@@ -608,6 +623,100 @@ app.delete('/api/recipes', verifyToken, async (req, res) => {
   }
 });
 
+// favorite recipe delete from user
+ app.delete('/api/favorite', verifyToken, verifyUser, async (req, res) => {
+  try {
+    const id = req.query.id; // ১. আগে আইডি রিসিভ করুন
+    console.log(id, 'deleted recipe id'); // ২. তারপর লগ করুন
+
+    // আইডি না থাকলে সার্ভার ক্র্যাশ করতে না দিয়ে আগেই রিটার্ন করুন
+    if (!id || id === 'undefined') {
+      return res.status(400).json({ success: false, message: "Valid ID is required" });
+    }
+
+    const query = { _id: new ObjectId(id) };
+    const result = await myFavoritesCollections.deleteOne(query);
+    
+    // সবসময় রেসপন্স হিসেবে json পাঠানো ভালো প্র্যাকটিস
+    return res.json(result); 
+
+  } catch (error) {
+    console.error("Express Delete Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// report recipe remove
+app.delete('/api/report', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    // ১. রিকোয়েস্টের বডি থেকে আইডি দুটি নেওয়া হচ্ছে
+    const { recipeId, _id } = req.body;
+
+    if (!recipeId || !_id) {
+      return res.status(400).json({ message: "recipeId and report id are required" });
+    }
+
+    // ২. রেসিপি কালেকশন থেকে ডিলিট করা
+    const recipeResult = await recipeCollection.deleteOne({
+      _id: new ObjectId(recipeId)
+    });
+
+    // ৩. রিপোর্ট কালেকশন থেকে ডিলিট করা
+    const reportResult = await reportCollection.deleteOne({
+      _id: new ObjectId(_id)
+    });
+
+    // ৪. রেসপন্স পাঠানো
+    if (recipeResult.deletedCount === 0 && reportResult.deletedCount === 0) {
+      return res.status(404).json({ message: "No recipe or report found to delete" });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: "Recipe and report deleted successfully" 
+    });
+
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// report remove
+
+// report recipe remove
+app.delete('/api/reportRemove', verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    // ১. রিকোয়েস্টের বডি থেকে আইডি দুটি নেওয়া হচ্ছে
+    const { _id } = req.body;
+
+    if (!_id) {
+      return res.status(400).json({ message: " report id are required" });
+    }
+
+   
+  
+
+    // ৩. রিপোর্ট কালেকশন থেকে ডিলিট করা
+    const reportResult = await reportCollection.deleteOne({
+      _id: new ObjectId(_id)
+    });
+
+    // ৪. রেসপন্স পাঠানো
+    if ( reportResult.deletedCount === 0) {
+      return res.status(404).json({ message: "No report found to delete" });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: "report deleted successfully" 
+    });
+
+  } catch (error) {
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+
 
 
 
@@ -619,16 +728,7 @@ app.delete('/api/recipes', verifyToken, async (req, res) => {
 
 
 
-  // // job details data fetching
-  // app.get('/api/jobs/:id', async (req, res) => {
-  //   const id = req.params.id;
-  //   const query = {_id : new ObjectId(id)}
-  //   const result = await jobCollection.findOne(query)
-  //   res.json(result)
-    
-  // })
 
- 
 
 
 
