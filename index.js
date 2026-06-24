@@ -171,6 +171,16 @@ app.get('/api/plans', async (req, res) => {
   }
 });
 
+    // all subscriptions fetching
+    app.get('/api/subscriptions', verifyToken, verifyAdmin, async (req, res) => {
+    
+   
+      const cursor = subsCollection.find();
+      const recipes = await cursor.toArray();
+      res.json(recipes);
+    }
+)
+
 
 // geting purchased recipe 
 app.get('/api/purchased', verifyToken, verifyUser, async(req, res) => {
@@ -355,13 +365,27 @@ app.post('/api/subs', verifyToken, async (req, res) => {
 
     const userEmail = subsInfo.customerEmail;
     const recipeId = subsInfo.recipeId;
+    const sessionId = subsInfo.sessionId; // <--- সেশন আইডিটি আলাদা করে নেওয়া হলো
 
+    // ==========================================
     // ১. যদি recipeId থাকে (নির্দিষ্ট কোনো রেসিপি কেনা হচ্ছে)
+    // ==========================================
     if (recipeId) {
+      // প্রথমে চেক করব এই সেশন আইডি দিয়ে ইতিমধ্যে কেনা হয়েছে কি না (রিফ্রেশ প্রোটেকশন)
+      if (sessionId) {
+        const sessionCheck = await purchasedRecipes.findOne({ sessionId: sessionId });
+        if (sessionCheck) {
+          return res.status(200).json({ // ডুপ্লিকেটের জন্য ২০০ (সাকসেস) পাঠানোই ভালো, কারণ পেমেন্ট অলরেডি ডান
+            success: true,
+            message: "This purchase has already been recorded!"
+          });
+        }
+      }
+
+  
       const query = { customerEmail: userEmail, recipeId: recipeId };
       const alreadyPurchased = await purchasedRecipes.findOne(query);
 
-      // আগে কেনা হয়ে থাকলে এখানেই রেসপন্স ফেরত পাঠিয়ে ফাংশন থামিয়ে দেবে
       if (alreadyPurchased) {
         return res.status(400).json({
           success: false,
@@ -369,10 +393,8 @@ app.post('/api/subs', verifyToken, async (req, res) => {
         });
       }
 
-      // কেনা না হয়ে থাকলে purchasedRecipes-এ ইনসার্ট হবে
+  
       const result = await purchasedRecipes.insertOne(subsInfo);
-
-
 
       return res.status(201).json({
         success: true,
@@ -381,8 +403,22 @@ app.post('/api/subs', verifyToken, async (req, res) => {
       });
     }
 
+    // ==========================================
     // ২. যদি recipeId না থাকে (সাধারণ কোনো সাবস্ক্রিপশন বা প্ল্যান কেনা হচ্ছে)
+    // ==========================================
     if (!recipeId) {
+      // সেশন আইডি দিয়ে চেক করব এই সাবস্ক্রিপশন আগে সেভ হয়েছে কি না (রিফ্রেশ প্রোটেকশন)
+      if (sessionId) {
+        const sessionCheck = await subsCollection.findOne({ sessionId: sessionId });
+        if (sessionCheck) {
+          return res.status(200).json({
+            success: true,
+            message: "This subscription has already been recorded!"
+          });
+        }
+      }
+
+      // ডাটা না থাকলে নতুন করে ইনসার্ট হবে
       const result = await subsCollection.insertOne(subsInfo);
 
       // ইউজার ডাটা আপডেট (প্ল্যান আপডেট)
@@ -400,7 +436,6 @@ app.post('/api/subs', verifyToken, async (req, res) => {
     }
 
   } catch (error) {
-    // যেকোনো এরর হলে ক্যাচ ব্লকে চলে আসবে এবং সার্ভার ক্র্যাশ করবে না
     console.error("Error in /api/subs:", error);
     return res.status(500).json({
       success: false,
