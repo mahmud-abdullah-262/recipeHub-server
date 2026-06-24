@@ -37,6 +37,7 @@ async function run() {
      const subsCollection = db.collection('subscriptions')
      const purchasedRecipes = db.collection('purchasedRecipes')
      const featuredCollection = db.collection('featured')
+     const reportCollection = db.collection('reports')
   
 
 
@@ -303,7 +304,7 @@ app.post('/api/featuring', verifyToken, verifyAdmin, async (req, res) => {
     } else {
       // ---- কন্ডিশন B: যদি ফিচারড না করা থাকে, তবে নতুন করে যুক্ত করতে হবে ----
       
-      // আইডি কনф্লিক্ট এড়াতে ডাটার মূল _id বাদ দিয়ে নতুন অবজেক্ট তৈরি
+      // ডাটার মূল _id বাদ দিয়ে নতুন অবজেক্ট তৈরি
       const { _id, ...restOfData } = data; 
       const featured = {
         ...restOfData,
@@ -332,6 +333,8 @@ app.post('/api/featuring', verifyToken, verifyAdmin, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+
 
 // subs post api
 app.post('/api/subs', verifyToken, async (req, res) => {
@@ -399,6 +402,37 @@ app.post('/api/subs', verifyToken, async (req, res) => {
   }
 });
 
+
+// report posting
+app.post('/api/reports', verifyToken, verifyUser, async(req, res) => {
+
+  try {
+const report = req.body
+  if(!report){
+    return  res.status(400).json({
+          success: false,
+          message: "Report Not Found"
+        });
+  }
+  const result = reportCollection.insertOne(report)
+  return  res.status(200).json({
+          success: true,
+          message: "Thank you for your report. We will review it.",
+          data: result
+        });
+  } 
+  catch (error) {
+    // যেকোনো এরর হলে ক্যাচ ব্লকে চলে আসবে এবং সার্ভার ক্র্যাশ করবে না
+    console.error("Error in /api/reports:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+});
+
+  
 
 
     // ================ patch functions ============================
