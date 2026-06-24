@@ -211,6 +211,14 @@ app.get('/api/check-purchase', verifyToken, async (req, res) => {
 });
 
 
+// getting reports by admin
+app.get('/api/reports', verifyToken, verifyAdmin, async (req, res) => {
+  const cursor = reportCollection.find()
+  const result = await cursor.toArray()
+  res.json(result)
+})
+
+
     // =============== post functions ============================
 // recipe posting 
     app.post('/api/recipes', verifyToken, verifyUser, async (req, res) => {
