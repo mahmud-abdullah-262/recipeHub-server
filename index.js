@@ -94,19 +94,35 @@ const verifyAdmin = async(req, res, next) => {
 
 // ================== get functions ======================
 
-    // all recipe fetching
-    app.get('/api/recipes', async (req, res) => {
-    
-     
+ // all recipe fetching with pagination
+app.get('/api/recipes', async (req, res) => {
+  try {
+    // ক্লায়েন্ট থেকে page এবং size নেওয়া (ডিফল্ট মান হিসেবে page=1 এবং size=10)
+    const page = parseInt(req.query.page) || 1;
+    const size = parseInt(req.query.size) || 2;
+    const category = req.query.category
+    const query = {category: category}
 
+    // কতগুলো ডাটা বাদ (skip) দিতে হবে তা হিসাব করা
+    const skipCount = (page - 1) * size;
 
+ 
 
-     
-      const cursor = recipeCollection.find();
-      const recipes = await cursor.toArray();
-      res.json(recipes);
-    }
-)
+    // নির্দিষ্ট পরিমাণ ডাটা ফেচ করা
+    const cursor = recipeCollection.find(query).skip(skipCount).limit(size);
+    const recipes = await cursor.toArray();
+       // মোট রেসিপির সংখ্যা জানা (ফ্রন্টএন্ডে টোটাল পেজ হিসাব করার জন্য লাগবে)
+    const totalRecipes = recipes.length
+
+    // ডাটা এবং টোটাল কাউন্ট একসাথে পাঠানো
+    res.json({
+      totalRecipes,
+      recipes
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
+  }
+});
 
 // recipe by id fetching
  app.get('/api/recipes/:id', verifyToken, verifyUser, async (req, res) => {
@@ -171,11 +187,21 @@ app.get('/api/plans', async (req, res) => {
   }
 });
 
-    // all subscriptions fetching
+    // all subscriptions admin fetching
     app.get('/api/subscriptions', verifyToken, verifyAdmin, async (req, res) => {
     
    
       const cursor = subsCollection.find();
+      const subs = await cursor.toArray();
+      res.json(subs);
+    }
+)
+
+    // all purchased admin fetching
+    app.get('/api/purchasedData', verifyToken, verifyAdmin, async (req, res) => {
+    
+   
+      const cursor = purchasedRecipes.find();
       const recipes = await cursor.toArray();
       res.json(recipes);
     }
