@@ -38,6 +38,7 @@ async function run() {
      const purchasedRecipes = db.collection('purchasedRecipes')
      const featuredCollection = db.collection('featured')
      const reportCollection = db.collection('reports')
+     const likedRecipesCollection = db.collection('likedRecipes')
   
 
 
@@ -257,6 +258,44 @@ app.get('/api/reports', verifyToken, verifyAdmin, async (req, res) => {
   res.json(result)
 })
 
+    // all featured fetching
+    app.get('/api/featured', async (req, res) => {
+    
+   
+      const cursor = featuredCollection.find();
+      const recipes = await cursor.toArray();
+      res.json(recipes);
+    }
+)
+
+
+// recipe by id fetching
+ app.get('/api/featured/:id', verifyToken, verifyUser, async (req, res) => {
+      const id = req.params.id;
+      console.log(id, 'id')
+      
+      const query = {_id: new ObjectId(id)} // ডাটায় যদি ম্যানুয়াল আইডি সেট করা থাকে তাহলে এভাবে। আর যদি ম্যানুয়ালি আইডি না থাকে তাহলে এভাবে - new ObjectId(id)
+
+      const result = await featuredCollection.findOne(query);
+      console.log(result, 'recipe')
+      res.json(result)
+    })
+
+// most liked recipes
+app.get('/api/mostLiked', async (req, res) => {
+  try {
+    const result = await recipeCollection
+      .find()                       // সব রেসিপি খুঁজে বের করবে
+      .sort({ likesCount: -1 })     // likesCount-এর ওপর ভিত্তি করে বড় থেকে ছোট (Descending) সাজাবে
+      .limit(4)                     // সর্বোচ্চ ৪টি আইটেম নিবে
+      .toArray();                   // ডেটাকে অ্যারেতে রূপান্তর করবে
+
+    res.send(result);               // ক্লায়েন্টকে রেসপন্স পাঠাবে
+  } catch (error) {
+    console.error("Error fetching most liked recipes:", error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
 
     // =============== post functions ============================
 // recipe posting 
@@ -519,24 +558,44 @@ const report = req.body
 
 // like function
 app.post('/app/liked', verifyToken, verifyUser, async (req, res) => {
-  const { recipeId, userId, creatorId } = req.body;
+  const { recipeId, userId, creatorId } = req.body; // creatorId-ও এখানে নিয়ে আসা হলো
 
-  // আইডিগুলো ভ্যালিড কিনা চেক করে নেওয়া ভালো (যদি ObjectId ব্যবহার করেন)
-  if (!recipeId || !creatorId) {
+  // আইডিগুলো ভ্যালিড কিনা চেক করে নেওয়া
+  if (!recipeId || !userId || !creatorId) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
   try {
-    // ১. recipeCollection-এ likesCount ১ বাড়ানো (যদি ফিল্ড না থাকে, $inc সেটি তৈরি করে নেবে)
+    const rId = new ObjectId(recipeId);
+    const uId = new ObjectId(userId);
+    const cId = new ObjectId(creatorId);
+
+    // ১. চেক করা—এই ইউজার এই রেসিপিতে ইতিমধ্যে লাইক দিয়েছে কিনা
+    const alreadyLiked = await likedRecipesCollection.findOne({ 
+      recipeId: rId, 
+      userId: uId 
+    });
+
+    if (alreadyLiked) {
+      return res.status(400).json({ message: "You already liked this recipe" });
+    }
+
+    // ২. যদি আগে লাইক না দিয়ে থাকে, তবে লাইক ট্র্যাক করার জন্য ডেটা ইনসার্ট করা
+    await likedRecipesCollection.insertOne({
+      recipeId: rId,
+      userId: uId,
+      createdAt: new Date()
+    });
+
+    // ৩. recipeCollection-এ likesCount ১ বাড়ানো
     const recipeUpdate = await recipeCollection.updateOne(
-      { _id: new ObjectId(recipeId) }, // অথবা শুধু { _id: recipeId } যদি স্ট্রিং আইডি হয়
+      { _id: rId },
       { $inc: { likesCount: 1 } }
     );
 
-    // ২. userCollection-এ ক্রিয়েটরের likesCount ১ বাড়ানো
-    // $inc অপারেটর ফিল্ড না থাকলে নিজে থেকেই তৈরি করে ১ বসিয়ে দেয়, আর থাকলে ১ যোগ করে।
+    // ৪. userCollection-এ ক্রিয়েটরের likesCount ১ বাড়ানো
     const creatorUpdate = await userCollection.updateOne(
-      { _id: new ObjectId(creatorId) }, // অথবা শুধু { _id: creatorId }
+      { _id: cId },
       { $inc: { likesCount: 1 } }
     );
 
