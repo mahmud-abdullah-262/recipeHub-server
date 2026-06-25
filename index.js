@@ -99,10 +99,13 @@ app.get('/api/recipes', async (req, res) => {
   try {
     // ক্লায়েন্ট থেকে page এবং size নেওয়া (ডিফল্ট মান হিসেবে page=1 এবং size=10)
     const page = parseInt(req.query.page) || 1;
-    const size = parseInt(req.query.size) || 2;
-    const category = req.query.category
-    const query = {category: category}
-
+    const size = parseInt(req.query.size) || 10;
+    const category = req.query.category || '';
+    const query = {}
+    if(category !== ''){
+      query.category = req.query.category
+    }
+const totalRecipes = await recipeCollection.countDocuments(query);
     // কতগুলো ডাটা বাদ (skip) দিতে হবে তা হিসাব করা
     const skipCount = (page - 1) * size;
 
@@ -112,7 +115,7 @@ app.get('/api/recipes', async (req, res) => {
     const cursor = recipeCollection.find(query).skip(skipCount).limit(size);
     const recipes = await cursor.toArray();
        // মোট রেসিপির সংখ্যা জানা (ফ্রন্টএন্ডে টোটাল পেজ হিসাব করার জন্য লাগবে)
-    const totalRecipes = recipes.length
+    
 
     // ডাটা এবং টোটাল কাউন্ট একসাথে পাঠানো
     res.json({
@@ -510,6 +513,43 @@ const report = req.body
       message: "Internal server error",
       error: error.message
     });
+  }
+});
+
+
+// like function
+app.post('/app/liked', verifyToken, verifyUser, async (req, res) => {
+  const { recipeId, userId, creatorId } = req.body;
+
+  // আইডিগুলো ভ্যালিড কিনা চেক করে নেওয়া ভালো (যদি ObjectId ব্যবহার করেন)
+  if (!recipeId || !creatorId) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  try {
+    // ১. recipeCollection-এ likesCount ১ বাড়ানো (যদি ফিল্ড না থাকে, $inc সেটি তৈরি করে নেবে)
+    const recipeUpdate = await recipeCollection.updateOne(
+      { _id: new ObjectId(recipeId) }, // অথবা শুধু { _id: recipeId } যদি স্ট্রিং আইডি হয়
+      { $inc: { likesCount: 1 } }
+    );
+
+    // ২. userCollection-এ ক্রিয়েটরের likesCount ১ বাড়ানো
+    // $inc অপারেটর ফিল্ড না থাকলে নিজে থেকেই তৈরি করে ১ বসিয়ে দেয়, আর থাকলে ১ যোগ করে।
+    const creatorUpdate = await userCollection.updateOne(
+      { _id: new ObjectId(creatorId) }, // অথবা শুধু { _id: creatorId }
+      { $inc: { likesCount: 1 } }
+    );
+
+    // চেক করা যে ডকুমেন্টগুলো আসলেই আপডেট হয়েছে কিনা
+    if (recipeUpdate.modifiedCount === 0 || creatorUpdate.modifiedCount === 0) {
+      return res.status(404).json({ message: "Recipe or Creator not found" });
+    }
+
+    res.status(200).json({ success: true, message: "Liked successfully!" });
+
+  } catch (error) {
+    console.error("Error updating likes:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 });
 
